@@ -1,6 +1,7 @@
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
+import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
@@ -26,10 +27,11 @@ export class Autohide {
         this._dragging = false;
         this._reactive = dash.reactive;
         this._trackHover = dash.track_hover;
+        this._edge = null;
         try {
             dash.reactive = true;
             dash.track_hover = true;
-            for (const key of ['autohide', 'intellihide'])
+            for (const key of ['autohide', 'intellihide', 'autohide-edge'])
                 this._connect(settings, `changed::${key}`, () => this.sync());
             this._connect(dash, 'notify::hover', () => this._hoverChanged());
             this._connect(dash, 'notify::width', () => this.queueSync());
@@ -48,6 +50,11 @@ export class Autohide {
                     this.sync();
                 });
             }
+            this._connect(host, 'destroy', () => {
+                this._host = null;
+                this._cancelTimers();
+            });
+            this._createEdge();
             for (const item of dash._box.get_children())
                 this._watchItem(item);
             for (const actor of global.get_window_actors())
@@ -62,8 +69,62 @@ export class Autohide {
         this._connections.push([object, object.connect(signal, callback)]);
     }
 
+    _cancelTimers() {
+        if (this._idleId) {
+            GLib.source_remove(this._idleId);
+            this._idleId = 0;
+        }
+        if (this._hideId) {
+            GLib.source_remove(this._hideId);
+            this._hideId = 0;
+        }
+    }
+
+    /* ----- Invisible Reveal Edge ----- */
+
+    _createEdge() {
+        // When the peek strip is disabled the dock hides completely, so an
+        // invisible reactive strip along the monitor's bottom edge reveals it.
+        this._edge = new St.Widget({
+            name: 'dashcraft-reveal-edge',
+            reactive: true,
+            track_hover: true,
+            visible: false,
+        });
+        Main.layoutManager.addChrome(this._edge, {
+            affectsStruts: false,
+            trackFullscreen: true,
+        });
+        this._edge.get_parent()?.set_child_below_sibling(this._edge, this._host);
+        this._connect(this._edge, 'destroy', () => {
+            this._edge = null;
+        });
+        this._connect(this._edge, 'notify::hover', () => this._hoverChanged());
+    }
+
+    _syncEdge(enabled, desktop, hide) {
+        const edge = this._edge;
+        if (!edge || !this._host)
+            return;
+        const useEdge = enabled && desktop && !Main.overview.visible &&
+            !this._settings.get_boolean('autohide-edge') && (hide || edge.hover);
+        if (!useEdge) {
+            edge.hide();
+            return;
+        }
+        const monitor = Main.layoutManager.findMonitorForActor(this._host) ??
+            Main.layoutManager.primaryMonitor;
+        if (!monitor) {
+            edge.hide();
+            return;
+        }
+        edge.set_position(monitor.x, monitor.y + monitor.height - PEEK);
+        edge.set_size(monitor.width, PEEK);
+        edge.show();
+    }
+
     queueSync() {
-        if (this._idleId)
+        if (this._idleId || !this._host)
             return;
         this._idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
             this._idleId = 0;
@@ -76,7 +137,8 @@ export class Autohide {
         if (this._hideId)
             GLib.source_remove(this._hideId);
         this._hideId = 0;
-        if (this._dash.hover) {
+        const hovered = (this._dash?.hover ?? false) || (this._edge?.hover ?? false);
+        if (hovered) {
             this.sync();
         } else {
             this._hideId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, HIDE_DELAY, () => {
@@ -88,15 +150,20 @@ export class Autohide {
     }
 
     sync() {
+        if (!this._host || !this._dash || !this._settings)
+            return;
         const enabled = this._settings.get_boolean('autohide') || this._settings.get_boolean('intellihide');
         const desktop = this._isDesktop();
         const reveal = !enabled || !desktop || Main.overview.visible || this._dragging ||
-            this._dash.hover || this._hideId !== 0 || this._isMenuOpen() ||
+            this._dash.hover || (this._edge?.hover ?? false) || this._hideId !== 0 ||
+            this._isMenuOpen() ||
             [...this._items.keys()].some(icon => icon._menu?.isOpen);
         const hide = !reveal && (this._settings.get_boolean('intellihide')
             ? this._hasOverlap() : true);
+        this._syncEdge(enabled, desktop, hide);
+        const peek = this._settings.get_boolean('autohide-edge') ? PEEK : 0;
         const target = hide
-            ? Math.max(0, this._host.height - this._dash.y - this._dash._background.y - PEEK)
+            ? Math.max(0, this._host.height - this._dash.y - this._dash._background.y - peek)
             : 0;
         if (!desktop) {
             this._host.remove_transition('translation-y');
@@ -173,10 +240,7 @@ export class Autohide {
     /* ----- Cleanup ----- */
 
     destroy() {
-        if (this._idleId)
-            GLib.source_remove(this._idleId);
-        if (this._hideId)
-            GLib.source_remove(this._hideId);
+        this._cancelTimers();
         for (const [object, id] of this._connections)
             object.disconnect(id);
         for (const [window, ids] of this._windows) {
@@ -187,10 +251,19 @@ export class Autohide {
             for (const id of ids)
                 icon.disconnect(id);
         }
-        this._host.remove_transition('translation-y');
-        this._host.translation_y = 0;
-        this._dash.track_hover = this._trackHover;
-        this._dash.reactive = this._reactive;
+        if (this._host) {
+            this._host.remove_transition('translation-y');
+            this._host.translation_y = 0;
+        }
+        if (this._dash) {
+            this._dash.track_hover = this._trackHover;
+            this._dash.reactive = this._reactive;
+        }
+        if (this._edge) {
+            Main.layoutManager.removeChrome(this._edge);
+            this._edge.destroy();
+            this._edge = null;
+        }
         this._connections = [];
         this._windows.clear();
         this._items.clear();

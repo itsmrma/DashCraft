@@ -14,7 +14,7 @@ export class Colors {
         dash.insert_child_above(this._border, dash._background);
         this._connections = [
             'background-transparency', 'background-color', 'custom-background',
-            'border-enabled', 'border-color', 'border-width',
+            'border-enabled', 'border-color', 'border-width', 'blur-enabled',
         ].map(key => settings.connect(`changed::${key}`, () => this._sync()));
         this._sync();
     }
@@ -23,7 +23,8 @@ export class Colors {
         this._border.visible = this._settings.get_boolean('border-enabled') &&
             this._settings.get_double('border-width') > 0;
         this._border.queue_repaint();
-        const custom = this._settings.get_boolean('custom-background');
+        const custom = this._settings.get_boolean('custom-background') ||
+            this._settings.get_boolean('blur-enabled');
         if (!custom) {
             this._dash.remove_style_class_name('dashcraft-custom-background');
             this._dash._background.set_style(this._backgroundStyle);
@@ -33,7 +34,10 @@ export class Colors {
         const saved = this._settings.get_string('background-color');
         const color = /^#[0-9a-f]{6}$/i.test(saved) ? saved : '#38383c';
         const rgb = [1, 3, 5].map(offset => parseInt(color.slice(offset, offset + 2), 16));
-        const alpha = 1 - this._settings.get_int('background-transparency') / 100;
+        let alpha = 1 - this._settings.get_int('background-transparency') / 100;
+        // With live blur the background is only a tint over the blurred content.
+        if (this._settings.get_boolean('blur-enabled'))
+            alpha = Math.min(alpha, 0.45);
         let style = `background-color: rgba(${rgb.join(', ')}, ${alpha.toFixed(2)});`;
         const original = this._backgroundStyle?.trim();
         if (original)
@@ -138,7 +142,6 @@ const DockBorder = GObject.registerClass(class DashCraftDockBorder extends St.Dr
         if (this._bounds?.every((value, index) => value === bounds[index]))
             return;
         this._bounds = bounds;
-        this.queue_relayout();
         this.queue_repaint();
     }
 

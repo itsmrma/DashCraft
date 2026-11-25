@@ -19,7 +19,23 @@ export default class DashCraftPreferences extends ExtensionPreferences {
         });
         settings.bind('show-dock', row, 'active', Gio.SettingsBindFlags.DEFAULT);
         group.add(row);
+        const allMonitors = new Adw.SwitchRow({
+            title: 'Show on All Monitors',
+            subtitle: 'Show a dock on every monitor, not just the primary one.',
+        });
+        settings.bind('all-monitors', allMonitors, 'active', Gio.SettingsBindFlags.DEFAULT);
+        group.add(allMonitors);
         this._addVisibilityPreferences(group, settings);
+        const revealEdge = new Adw.SwitchRow({
+            title: 'Reveal Edge',
+            subtitle: 'Keep a 5px strip visible when hidden. Off: hide fully and reveal by hovering the bottom edge.',
+        });
+        settings.bind('autohide-edge', revealEdge, 'active', Gio.SettingsBindFlags.DEFAULT);
+        group.add(revealEdge);
+        const updateEdgeSensitivity = () => {
+            revealEdge.sensitive = settings.get_boolean('autohide') || settings.get_boolean('intellihide');
+        };
+        updateEdgeSensitivity();
         const badges = new Adw.SwitchRow({
             title: 'Show Badges',
             subtitle: 'Show application counters and notification badges.',
@@ -27,6 +43,10 @@ export default class DashCraftPreferences extends ExtensionPreferences {
         settings.bind('show-badges', badges, 'active', Gio.SettingsBindFlags.DEFAULT);
         group.add(badges);
         page.add(group);
+
+        const sizeGroup = new Adw.PreferencesGroup({title: 'Dock size'});
+        const iconSizeId = this._addIconSize(sizeGroup, settings);
+        page.add(sizeGroup);
 
         const appearance = new Adw.PreferencesGroup({
             title: 'Dock background',
@@ -87,6 +107,20 @@ export default class DashCraftPreferences extends ExtensionPreferences {
         restoreRow.activatable_widget = restore;
         appearance.add(restoreRow);
         page.add(appearance);
+
+        const blurGroup = new Adw.PreferencesGroup({
+            title: 'Live blur',
+            description: 'Blur the live content behind the dock (windows included), not the wallpaper.',
+        });
+        const blurToggle = new Adw.SwitchRow({
+            title: 'Enable live blur',
+            subtitle: 'The background color becomes a tint over the blurred content.',
+        });
+        settings.bind('blur-enabled', blurToggle, 'active', Gio.SettingsBindFlags.DEFAULT);
+        blurGroup.add(blurToggle);
+        const blurRadiusId = this._addBlurRadius(blurGroup, settings);
+        page.add(blurGroup);
+
         const closeIconPreferences = this._addIconPreferences(window, page, settings);
 
         const updateTransparency = () => {
@@ -218,7 +252,11 @@ export default class DashCraftPreferences extends ExtensionPreferences {
         const ids = [
             borderColorId,
             borderWidthId,
+            iconSizeId,
+            blurRadiusId,
             ...panelColorIds,
+            settings.connect('changed::autohide', updateEdgeSensitivity),
+            settings.connect('changed::intellihide', updateEdgeSensitivity),
             settings.connect('changed::border-enabled', updateMode),
             settings.connect('changed::border-color', updateMode),
             settings.connect('changed::border-width', updateMode),
@@ -304,6 +342,75 @@ export default class DashCraftPreferences extends ExtensionPreferences {
                 settings.set_double('border-width', width);
         });
         return settings.connect('changed::border-width', update);
+    }
+
+    /* ----- Icon Size ----- */
+
+    _addIconSize(group, settings) {
+        const row = new Adw.ActionRow({
+            title: 'Icon size',
+            subtitle: '0 = automatic',
+        });
+        const scale = new Gtk.Scale({
+            orientation: Gtk.Orientation.HORIZONTAL,
+            adjustment: new Gtk.Adjustment({lower: 0, upper: 96, step_increment: 1, page_increment: 8}),
+            digits: 0,
+            draw_value: false,
+            width_request: 180,
+            valign: Gtk.Align.CENTER,
+            tooltip_text: 'Dock icon size in pixels (0 = automatic)',
+        });
+        scale.add_mark(0, Gtk.PositionType.BOTTOM, 'Auto');
+        const value = new Gtk.Label({width_chars: 7, xalign: 1, css_classes: ['dim-label']});
+        row.add_suffix(scale);
+        row.add_suffix(value);
+        group.add(row);
+        const update = () => {
+            const size = settings.get_int('icon-size');
+            scale.set_value(size);
+            value.label = size === 0 ? 'Auto' : `${size} px`;
+        };
+        update();
+        scale.connect('value-changed', () => {
+            let size = Math.round(scale.get_value());
+            if (size > 0 && size < 16)
+                size = 16;
+            if (settings.get_int('icon-size') !== size)
+                settings.set_int('icon-size', size);
+        });
+        return settings.connect('changed::icon-size', update);
+    }
+
+    /* ----- Blur Radius ----- */
+
+    _addBlurRadius(group, settings) {
+        const row = new Adw.ActionRow({title: 'Blur radius'});
+        const scale = new Gtk.Scale({
+            orientation: Gtk.Orientation.HORIZONTAL,
+            adjustment: new Gtk.Adjustment({lower: 1, upper: 60, step_increment: 1, page_increment: 5}),
+            digits: 0,
+            draw_value: false,
+            width_request: 180,
+            valign: Gtk.Align.CENTER,
+            tooltip_text: 'Live blur strength in pixels',
+        });
+        const value = new Gtk.Label({width_chars: 7, xalign: 1, css_classes: ['dim-label']});
+        row.add_suffix(scale);
+        row.add_suffix(value);
+        group.add(row);
+        settings.bind('blur-enabled', row, 'sensitive', Gio.SettingsBindFlags.GET);
+        const update = () => {
+            const radius = settings.get_int('blur-radius');
+            scale.set_value(radius);
+            value.label = `${radius} px`;
+        };
+        update();
+        scale.connect('value-changed', () => {
+            const radius = Math.round(scale.get_value());
+            if (settings.get_int('blur-radius') !== radius)
+                settings.set_int('blur-radius', radius);
+        });
+        return settings.connect('changed::blur-radius', update);
     }
 
     /* ----- Color Controls ----- */

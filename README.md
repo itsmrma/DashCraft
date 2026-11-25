@@ -22,9 +22,10 @@ The original GNOME dash on your desktop, with:
 
 - Application unread badges and notification counters
 - Smooth icon and dock animations
-- Autohide or Intelihide, with a 5 px edge for hover reveal
+- Autohide or Intelihide, with an optional 5 px reveal edge or full hide
+- Adjustable dock icon size and optional multi-monitor support
 - Custom Show Apps icon with image preview
-- Live dash colors, transparency and fading border highlight
+- Live dash colors, transparency, live window-aware blur, and fading border highlight
 - Panel colors, item shadows and adaptive transparency
 - Separate Dash and Panel preferences, accessible by right-clicking Show Apps
 
