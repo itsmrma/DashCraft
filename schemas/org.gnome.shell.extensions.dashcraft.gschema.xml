@@ -40,7 +40,34 @@
     <key name="autohide" type="b">
       <default>false</default>
       <summary>Autohide</summary>
-      <description>Slide the dock down to a five-pixel strip until hovered.</description>
+      <description>Slide the dock down until hovered.</description>
+    </key>
+    <key name="autohide-edge" type="b">
+      <default>true</default>
+      <summary>Reveal edge</summary>
+      <description>Keep a five-pixel strip visible when hidden. When off, the dock hides completely and an invisible edge strip reveals it on hover.</description>
+    </key>
+    <key name="icon-size" type="i">
+      <range min="0" max="96"/>
+      <default>0</default>
+      <summary>Dock icon size</summary>
+      <description>Icon size in pixels. 0 lets the dock size itself automatically.</description>
+    </key>
+    <key name="all-monitors" type="b">
+      <default>false</default>
+      <summary>Show on all monitors</summary>
+      <description>Show a dock on every monitor instead of only the primary one.</description>
+    </key>
+    <key name="blur-enabled" type="b">
+      <default>false</default>
+      <summary>Live blur</summary>
+      <description>Blur the live content behind the dock (windows included), not just the wallpaper.</description>
+    </key>
+    <key name="blur-radius" type="i">
+      <range min="1" max="60"/>
+      <default>24</default>
+      <summary>Blur radius</summary>
+      <description>Strength of the live blur, in pixels.</description>
     </key>
     <key name="intellihide" type="b">
       <default>false</default>

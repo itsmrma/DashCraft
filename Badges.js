@@ -86,6 +86,25 @@ const BadgeOverlay = GObject.registerClass(class DashCraftBadgeOverlay extends S
 
 /* ----- Application Counters ----- */
 
+// Several docks (one per monitor) share a single well-known name ownership.
+let unityNameRefs = 0;
+let unityNameId = 0;
+
+function acquireUnityName() {
+    if (unityNameRefs++ === 0) {
+        unityNameId = Gio.bus_own_name(
+            Gio.BusType.SESSION, 'com.canonical.Unity',
+            Gio.BusNameOwnerFlags.NONE, null, null, null);
+    }
+}
+
+function releaseUnityName() {
+    if (--unityNameRefs === 0 && unityNameId) {
+        Gio.bus_unown_name(unityNameId);
+        unityNameId = 0;
+    }
+}
+
 class LauncherBadges {
     constructor(changed) {
         this._changed = changed;
@@ -106,9 +125,7 @@ class LauncherBadges {
                     this._publishers.delete(name))
                     this._changed?.();
             });
-        this._nameId = Gio.bus_own_name(
-            Gio.BusType.SESSION, 'com.canonical.Unity',
-            Gio.BusNameOwnerFlags.NONE, null, null, null);
+        acquireUnityName();
     }
 
     _update(sender, parameters) {
@@ -159,7 +176,7 @@ class LauncherBadges {
         this._changed = null;
         this._bus.signal_unsubscribe(this._updateId);
         this._bus.signal_unsubscribe(this._ownerId);
-        Gio.bus_unown_name(this._nameId);
+        releaseUnityName();
         this._publishers.clear();
     }
 }
